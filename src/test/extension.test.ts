@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fsApi from '../lib/editor/file/file-api'; // 注意路径
+import * as fsApi from '../lib/vscode/file/file-api'; // 注意路径
 
 suite('FileSystem API Test Suite', () => {
     const EMPTY_WORKSPACE_DIR = path.join(__dirname, '/test-workspace');

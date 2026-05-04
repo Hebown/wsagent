@@ -1,5 +1,5 @@
 import { ToolDefinition } from '../llm/llm-client';
-import * as fsApi from '../../lib/editor/file/file-api';
+import * as fsApi from '../../lib/vscode/file/file-api';
 type ToolExecutor = (args: any) => Promise<string>;
 
 export class ToolRegistry {

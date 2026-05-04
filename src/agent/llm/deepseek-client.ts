@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { LLMClient, Message, ToolDefinition } from './llm-client/llm-client';
+import { LLMClient, Message, ToolDefinition } from './llm-client';
 
 export class DeepSeekClient implements LLMClient {
     private client: OpenAI;
