@@ -1,5 +1,6 @@
 import { ToolDefinition } from '../llm/llm-client';
 import * as fsApi from '../../lib/vscode/file/file-api';
+import * as shellApi from '../../lib/vscode/terminal/terminal';
 type ToolExecutor = (args: any) => Promise<string>;
 
 export class ToolRegistry {
@@ -141,6 +142,73 @@ export function createDefaultToolRegistry(): ToolRegistry {
         async (args) => {
             await fsApi.deleteFileOrFolder(args.targetPath, args.recursive ?? false);
             return `已删除 "${args.targetPath}"。`;
+        }
+    );
+
+    // 6. 执行命令并获取输出 (阻塞式)
+    // 适用于需要 LLM 根据运行结果（如编译错误或单元测试结果）进行分析的场景
+    registry.registerTool(
+        {
+            type: 'function',
+            function: {
+                name: 'run_shell_command',
+                description: '在终端执行命令并等待返回 stdout 和 stderr。适用于运行脚本、编译代码或检查系统状态。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        command: { type: 'string', description: '要执行的完整 shell 命令' },
+                        cwd: { type: 'string', description: '执行命令的工作目录，默认为工作区根目录' }
+                    },
+                    required: ['command']
+                }
+            }
+        },
+        async (args) => {
+            const result = await shellApi.executeCommandWithOutput(args.command, args.cwd);
+            let output = `命令 [${args.command}] 执行完毕 (退出码: ${result.exitCode})\n`;
+            if (result.stdout) output += `--- 标准输出 ---\n${result.stdout}\n`;
+            if (result.stderr) output += `--- 错误输出 ---\n${result.stderr}\n`;
+            return output;
+        }
+    );
+
+    // 7. 发送命令到交互式终端 (非阻塞)
+    // 适用于启动服务器、打开 GUI 程序或需要用户持续观察输出的场景
+    registry.registerTool(
+        {
+            type: 'function',
+            function: {
+                name: 'send_to_terminal',
+                description: '将命令发送到名为 "Agent Terminal" 的 VS Code 终端窗口。命令会立即运行，但不会捕获其返回文本。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        command: { type: 'string', description: '要发送的命令内容' },
+                        showTerminal: { type: 'boolean', description: '是否自动弹出终端面板，默认 true' }
+                    },
+                    required: ['command']
+                }
+            }
+        },
+        async (args) => {
+            await shellApi.executeCommand(args.command, args.showTerminal ?? true);
+            return `命令 "${args.command}" 已发送到交互式终端。`;
+        }
+    );
+
+    // 8. 清空或重置终端
+    registry.registerTool(
+        {
+            type: 'function',
+            function: {
+                name: 'clear_terminal',
+                description: '清空 Agent 专用终端的显示内容。',
+                parameters: { type: 'object', properties: {} }
+            }
+        },
+        async () => {
+            await shellApi.clearTerminal();
+            return "终端已清空。";
         }
     );
 
