@@ -1,23 +1,37 @@
 {
   "name": "wsagent",
+  "publisher": "test-user",
   "displayName": "wsagent",
   "description": "agent for seed labs",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.118.0"
+    "vscode": "^1.100.0"
   },
   "categories": [
     "Other"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
+  "enabledApiProposals": [
+    "defaultChatParticipant"
+  ],
   "contributes": {
-    "commands": [
+    "chatParticipants": [
       {
-        "command": "wsagent.helloWorld",
-        "title": "Hello World"
+        "id": "wsagent.myagent",
+        "name": "WSAgent",
+        "description": "能够操作文件的智能助手"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "WSAgent Settings",
+      "properties": {
+        "wsagent.apiKey": {
+          "type": "string",
+          "description": "DeepSeek API Key"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run compile",
@@ -39,6 +53,7 @@
     "typescript-eslint": "^8.56.1"
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
     "openai": "^6.35.0"
   }
 }
