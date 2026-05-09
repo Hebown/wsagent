@@ -75,6 +75,5 @@ export async function disposeTerminal(): Promise<void> {
  */
 export async function clearTerminal(): Promise<void> {
     const terminal = getOrCreateTerminal();
-    terminal.sendText('clear'); // 适配 Unix/macOS
-    // terminal.sendText('cls'); // 如果是 Windows 且使用 cmd，需酌情切换
+    terminal.sendText('clear');
 }
