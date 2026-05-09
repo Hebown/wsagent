@@ -1,26 +1,24 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import * as fs from 'fs'
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+import { DeepSeekClient } from './agent/llm/deepseek-client';
+import { createDefaultToolRegistry } from './agent/tools/tool-registry';
+import { registerChatParticipant } from './lib/vscode/chat/chat';
+
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
 export function activate(context: vscode.ExtensionContext) {
+    // 1. 初始化 LLM 客户端（建议从环境变量或配置中读取 API Key）
+	vscode.window.showInformationMessage('WSAgent 已启动！');
+    const apiKey=process.env.DEEPSEEK_API_KEY as string;
+    const llmClient = new DeepSeekClient(apiKey);
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "wsagent" is now active!');
+    // 2. 初始化工具库
+    const toolRegistry = createDefaultToolRegistry();
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('wsagent.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from wsagent!');
-	});
+    // 3. 注册聊天参与者（前端交互核心）
+    registerChatParticipant(context, llmClient, toolRegistry);
 
-	context.subscriptions.push(disposable);
+    console.log('WSAgent 已经激活！');
 }
-
-// This method is called when your extension is deactivated
-export function deactivate() {}
