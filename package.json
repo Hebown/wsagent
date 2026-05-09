@@ -20,7 +20,7 @@
       {
         "id": "wsagent.myagent",
         "name": "WSAgent",
-        "description": "能够操作文件的智能助手"
+        "description": "你遇到了什么困难?"
       }
     ],
     "configuration": {
