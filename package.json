@@ -1,11 +1,11 @@
 {
   "name": "wsagent",
-  "publisher": "test-user",
+  "publisher": "Tenna",
   "displayName": "wsagent",
   "description": "agent for seed labs",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.100.0"
+    "vscode": "^1.118.0"
   },
   "categories": [
     "Other"
@@ -34,8 +34,9 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run compile",
+    "vscode:prepublish": "pnpm run build",
     "compile": "tsc -p ./",
+    "build": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src",
@@ -47,6 +48,8 @@
     "@types/vscode": "^1.118.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.9.1",
+    "esbuild": "^0.28.0",
     "eslint": "^9.39.3",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3",

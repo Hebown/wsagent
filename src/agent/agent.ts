@@ -171,9 +171,20 @@ export class Agent {
         return timeoutMsg;
     }
 
-    async ask(userInput: string): Promise<string> {
-        this.log(`用户输入: ${userInput}`);
-        this.messages.push({ role: 'user', content: userInput });
-        return this.run();
+    async ask(userInput: string, options?: { history?: Message[] }): Promise<string> {
+    this.log(`用户输入: ${userInput}`);
+
+    // 如果传入了历史记录，将其插入到 systemPrompt 之后，当前 userInput 之前
+    if (options?.history && options.history.length > 0) {
+        // 过滤掉可能重复的 system prompt，确保消息队列干净
+        const validHistory = options.history.filter(m => m.role !== 'system');
+        this.messages.push(...validHistory);
+        this.log(`已加载 ${validHistory.length} 条历史对话上下文`);
     }
+
+    // 放入当前用户的提问
+    this.messages.push({ role: 'user', content: userInput });
+    
+    return this.run();
+}
 }

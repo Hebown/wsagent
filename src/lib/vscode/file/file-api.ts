@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 
-function getWorkspaceRoot():vscode.Uri{
+export function getWorkspaceRoot():vscode.Uri{
     const folders=vscode.workspace.workspaceFolders;
     if(!folders||folders.length===0){
         throw new Error('未打开任何文件夹/工作区');

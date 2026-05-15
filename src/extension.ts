@@ -5,12 +5,15 @@ import { registerChatParticipant } from './lib/vscode/chat/chat';
 
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import { getWorkspaceRoot } from './lib/vscode/file/file-api';
 
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+const workspaceDirPath=getWorkspaceRoot().fsPath;
+dotenv.config({ path: path.join(workspaceDirPath, '.env') });
 
 export function activate(context: vscode.ExtensionContext) {
     // 1. 初始化 LLM 客户端（建议从环境变量或配置中读取 API Key）
 	vscode.window.showInformationMessage('WSAgent 已启动！');
+	vscode.window.showInformationMessage(path.join(workspaceDirPath,'.env'));
     const apiKey=process.env.DEEPSEEK_API_KEY as string;
     const llmClient = new DeepSeekClient(apiKey);
 
