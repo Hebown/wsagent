@@ -7,7 +7,26 @@ export interface AgentConfig {
     systemPrompt?: string;
     maxIterations?: number;
     temperature?: number;
-    logger?: (message: string) => void; // 可自定义日志输出，默认 console.log
+    logger?: (message: string) => void;
+}
+
+/**
+ * Agent 日志事件类型枚举
+ */
+export enum AgentLogEvent {
+    USER_INPUT = '[USER_INPUT]',
+    PLAN_DESIGNING = '[PLAN_DESIGNING]',
+    PLAN_DESIGNED = '[PLAN_DESIGNED]',
+    STEP_EXECUTING = '[STEP_EXECUTING]',
+    TOOL_CALLING = '[TOOL_CALLING]',
+    TOOL_RESULT = '[TOOL_RESULT]',
+    CHECKING_RESULT = '[CHECKING_RESULT]',
+    STEP_COMPLETED = '[STEP_COMPLETED]',
+    STEP_FAILED = '[STEP_FAILED]',
+    SUMMARIZING = '[SUMMARIZING]',
+    FINAL_ANSWER = '[FINAL_ANSWER]',
+    ITERATION_START = '[ITERATION_START]',
+    INFO = '[INFO]',
 }
 
 export class Agent {
@@ -31,12 +50,89 @@ export class Agent {
         this.messages = [{ role: 'system', content: this.config.systemPrompt }];
     }
 
+    private logEvent(event: AgentLogEvent, message: string): void {
+        this.config.logger(`${event} ${message}`);
+    }
+
     private log(message: string): void {
-        this.config.logger(`[Agent] ${message}`);
+        this.logEvent(AgentLogEvent.INFO, message);
+    }
+
+    /**
+     * 生成友好的工具目的描述
+     */
+    private formatToolPurpose(toolName: string, args: Record<string, any>): string {
+        switch (toolName) {
+            case 'create_file':
+                return `正在创建文件 \`${args.filePath}\``;
+            case 'read_file':
+                return `正在读取文件 \`${args.filePath}\``;
+            case 'create_folder':
+                return `正在创建文件夹 \`${args.folderPath}\``;
+            case 'list_directory':
+                return `正在查看目录 \`${args.dirPath}\` 的内容`;
+            case 'delete_file_or_folder':
+                return `正在删除 \`${args.targetPath}\``;
+            case 'run_shell_command': {
+                const cmd = args.command || '';
+                const shortCmd = cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd;
+                return `正在执行脚本：\`${shortCmd}\``;
+            }
+            case 'send_to_terminal': {
+                const cmd = args.command || '';
+                const shortCmd = cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd;
+                return `正在启动服务：\`${shortCmd}\``;
+            }
+            case 'clear_terminal':
+                return '正在清空终端';
+            case 'update_plan':
+                return '正在更新任务计划';
+            default:
+                const paramPreview = Object.entries(args)
+                    .slice(0, 2)
+                    .map(([k, v]) => `${k}=${String(v).slice(0, 30)}`)
+                    .join(', ');
+                return `正在执行「${toolName}」(${paramPreview})`;
+        }
+    }
+
+    /**
+     * 生成友好的结果描述。
+     * 对于 run_shell_command，生成一句话摘要 + 纯 Markdown 引用块包装完整输出。
+     * 不使用任何 HTML 标签，确保 Chat 侧边栏兼容渲染。
+     */
+    private formatToolResult(toolName: string, args: Record<string, any>, result: string): string {
+        switch (toolName) {
+            case 'run_shell_command': {
+                const cmd = args.command || '';
+
+                // 提取退出码
+                const exitCodeMatch = result.match(/退出码: (\d+)/);
+                const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1]) : -1;
+                const isSuccess = exitCode === 0;
+
+                // 一句话摘要
+                const shortCmd = cmd.length > 80 ? cmd.slice(0, 80) + '...' : cmd;
+                const summary = isSuccess
+                    ? `运行并测试项目二进制文件：\`${shortCmd}\``
+                    : `运行并测试项目二进制文件：\`${shortCmd}\`（退出码 ${exitCode}）`;
+
+                // 转义结果中的反引号，防止破坏 Markdown 代码块
+                const escapedResult = result.replace(/`/g, '\\`');
+
+                // 使用纯 Markdown 引用块 + 代码块展示完整输出
+                // 不依赖任何 HTML 标签，Chat 侧边栏 100% 兼容
+                return `${summary}\n\n> **完整输出：**\n>\n> \`\`\`\n> ${escapedResult.replace(/\n/g, '\n> ')}\n> \`\`\``;
+            }
+            default:
+                return result;
+        }
     }
 
     private async syncPlanToLocal(): Promise<void> {
-        if (!this.currentPlan) return;
+        if (!this.currentPlan) {
+            return;
+        }
         const filePath = `${this.PLAN_DIR}/current_plan.json`;
         const content = JSON.stringify(this.currentPlan, null, 4);
         try {
@@ -65,7 +161,9 @@ export class Agent {
     }
 
     private injectPlanContext() {
-        if (!this.currentPlan) return;
+        if (!this.currentPlan) {
+            return;
+        }
         const completedSteps = this.currentPlan.steps.filter(s => s.status === 'completed');
         const pendingSteps = this.currentPlan.steps.filter(s => s.status === 'pending');
         const contextPrompt = `
@@ -104,10 +202,64 @@ export class Agent {
                 }
             },
             async (args) => {
+                const isNewPlan = !this.currentPlan;
+                const steps = args.steps as Array<{ id: number; description: string; status: string }>;
+
+                if (isNewPlan) {
+                    this.logEvent(AgentLogEvent.PLAN_DESIGNING, '正在分析任务并设计执行计划...');
+                }
+
+                const oldSteps = this.currentPlan?.steps || [];
                 this.currentPlan = { goal: "用户请求", steps: args.steps };
                 await this.syncPlanToLocal();
-                this.log(`计划已更新，共 ${args.steps.length} 个步骤`);
-                return `计划已更新并同步到本地。当前共有 ${args.steps.length} 个步骤。`;
+
+                const runningStep = steps.find(s => s.status === 'running');
+                const completedStep = steps.find(s => s.status === 'completed');
+                const failedStep = steps.find(s => s.status === 'failed');
+
+                let returnMessage: string;
+
+                if (isNewPlan) {
+                    const stepDescriptions = steps.map(s => `  ${s.id}. ${s.description}`).join('\n');
+                    this.logEvent(AgentLogEvent.PLAN_DESIGNED,
+                        `计划设计完毕，共 ${steps.length} 个步骤：\n${stepDescriptions}`
+                    );
+                    returnMessage = `计划已创建，共 ${steps.length} 个步骤`;
+                } else if (runningStep) {
+                    this.logEvent(AgentLogEvent.STEP_EXECUTING,
+                        `正在执行计划中的第 ${runningStep.id} 步：${runningStep.description}`
+                    );
+                    returnMessage = `开始执行第 ${runningStep.id} 步：${runningStep.description}`;
+                } else if (completedStep) {
+                    this.logEvent(AgentLogEvent.STEP_COMPLETED,
+                        `第 ${completedStep.id} 步已完成：${completedStep.description}`
+                    );
+                    const completedCount = steps.filter(s => s.status === 'completed').length;
+                    const totalCount = steps.length;
+                    returnMessage = `第 ${completedStep.id} 步已完成：${completedStep.description}（进度 ${completedCount}/${totalCount}）`;
+                } else if (failedStep) {
+                    this.logEvent(AgentLogEvent.STEP_FAILED,
+                        `第 ${failedStep.id} 步失败：${failedStep.description}`
+                    );
+                    returnMessage = `第 ${failedStep.id} 步失败：${failedStep.description}`;
+                } else {
+                    const newStepIds = steps.map(s => s.id);
+                    const oldStepIds = oldSteps.map(s => s.id);
+                    const addedSteps = steps.filter(s => !oldStepIds.includes(s.id));
+                    const removedSteps = oldSteps.filter(s => !newStepIds.includes(s.id));
+
+                    const changes: string[] = [];
+                    if (addedSteps.length > 0) {
+                        changes.push(`新增 ${addedSteps.length} 个步骤`);
+                    }
+                    if (removedSteps.length > 0) {
+                        changes.push(`移除 ${removedSteps.length} 个步骤`);
+                    }
+                    const changeDesc = changes.length > 0 ? `（${changes.join('，')}）` : '（状态无变化）';
+                    returnMessage = `计划已更新，共 ${steps.length} 个步骤 ${changeDesc}`;
+                }
+
+                return returnMessage;
             }
         );
     }
@@ -131,7 +283,7 @@ export class Agent {
         let iteration = 0;
         while (iteration < this.config.maxIterations) {
             iteration++;
-            this.log(`--- 迭代 #${iteration} 开始 ---`);
+            this.logEvent(AgentLogEvent.ITERATION_START, `--- 迭代 #${iteration} 开始 ---`);
 
             const response = await this.llm.chat(this.messages, this.toolRegistry.getToolDefinitions(), 'auto');
             this.messages.push(response);
@@ -144,14 +296,16 @@ export class Agent {
 
                 for (const call of response.tool_calls) {
                     const args = JSON.parse(call.function.arguments);
-                    this.log(`▶ 执行工具: ${call.function.name}, 参数: ${JSON.stringify(args)}`);
+
+                    const purpose = this.formatToolPurpose(call.function.name, args);
+                    this.logEvent(AgentLogEvent.TOOL_CALLING, purpose);
+
                     const startTime = Date.now();
                     const result = await this.toolRegistry.execute(call.function.name, args);
                     const duration = Date.now() - startTime;
-                    this.log(`◀ 工具 ${call.function.name} 执行完毕 (${duration}ms), 结果长度: ${result.length} 字符`);
-                    // 可选：输出结果的前200字符避免日志过长
-                    const preview = result.length > 200 ? result.slice(0, 200) + '...' : result;
-                    this.log(`   结果预览: ${preview}`);
+
+                    const friendlyResult = this.formatToolResult(call.function.name, args, result);
+                    this.logEvent(AgentLogEvent.TOOL_RESULT, friendlyResult);
 
                     this.messages.push({
                         role: 'tool',
@@ -163,7 +317,8 @@ export class Agent {
             }
 
             const finalAnswer = response.content || '完成。';
-            this.log(`最终回答: ${finalAnswer}`);
+            this.logEvent(AgentLogEvent.SUMMARIZING, '运行完成，正在总结结果...');
+            this.logEvent(AgentLogEvent.FINAL_ANSWER, finalAnswer);
             return finalAnswer;
         }
         const timeoutMsg = `达到最大迭代次数 (${this.config.maxIterations})，停止执行。`;
@@ -172,19 +327,15 @@ export class Agent {
     }
 
     async ask(userInput: string, options?: { history?: Message[] }): Promise<string> {
-    this.log(`用户输入: ${userInput}`);
+        this.logEvent(AgentLogEvent.USER_INPUT, userInput);
 
-    // 如果传入了历史记录，将其插入到 systemPrompt 之后，当前 userInput 之前
-    if (options?.history && options.history.length > 0) {
-        // 过滤掉可能重复的 system prompt，确保消息队列干净
-        const validHistory = options.history.filter(m => m.role !== 'system');
-        this.messages.push(...validHistory);
-        this.log(`已加载 ${validHistory.length} 条历史对话上下文`);
+        if (options?.history && options.history.length > 0) {
+            const validHistory = options.history.filter(m => m.role !== 'system');
+            this.messages.push(...validHistory);
+            this.log(`已加载 ${validHistory.length} 条历史对话上下文`);
+        }
+
+        this.messages.push({ role: 'user', content: userInput });
+        return this.run();
     }
-
-    // 放入当前用户的提问
-    this.messages.push({ role: 'user', content: userInput });
-    
-    return this.run();
-}
 }

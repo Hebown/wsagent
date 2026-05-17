@@ -3,7 +3,7 @@
   "publisher": "Tenna",
   "displayName": "wsagent",
   "description": "agent for seed labs",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.118.0"
   },
@@ -58,5 +58,6 @@
   "dependencies": {
     "dotenv": "^17.4.2",
     "openai": "^6.35.0"
-  }
+  },
+  "repository":"https://github.com/Hebown/wsagent"
 }
