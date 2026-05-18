@@ -3,7 +3,7 @@
   "publisher": "Tenna",
   "displayName": "wsagent",
   "description": "agent for seed labs",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "engines": {
     "vscode": "^1.118.0"
   },
