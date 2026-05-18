@@ -124,6 +124,11 @@ export class Agent {
                 // 不依赖任何 HTML 标签，Chat 侧边栏 100% 兼容
                 return `${summary}\n\n> **完整输出：**\n>\n> \`\`\`\n> ${escapedResult.replace(/\n/g, '\n> ')}\n> \`\`\``;
             }
+            case 'read_file': {
+                // 只告知文件已读取成功，不输出文件内容
+                const filePath = args.filePath || '';
+                return `文件 \`${filePath}\` 已读取成功`;
+            }
             default:
                 return result;
         }
@@ -291,7 +296,7 @@ export class Agent {
             if (response.tool_calls && response.tool_calls.length > 0) {
                 this.log(`LLM 请求调用 ${response.tool_calls.length} 个工具:`);
                 for (const call of response.tool_calls) {
-                    this.log(`  - 工具: ${call.function.name}, 参数: ${call.function.arguments}`);
+                    this.log(`  - 工具: ${call.function.name}`);
                 }
 
                 for (const call of response.tool_calls) {
