@@ -212,5 +212,35 @@ export function createDefaultToolRegistry(): ToolRegistry {
         }
     );
 
+    // 9. 替换文件中的文本
+    registry.registerTool(
+        {
+            type: 'function',
+            function: {
+                name: 'replace_in_file',
+                description: '替换文件中指定的文本内容（纯文本替换，非正则）。支持替换所有出现或指定第几次出现。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        filePath: { type: 'string', description: '相对于工作区根目录的文件路径，例如 "src/main.py"' },
+                        searchText: { type: 'string', description: '要搜索并替换的文本（纯文本，非正则表达式）' },
+                        replaceText: { type: 'string', description: '替换后的新文本' },
+                        occurrence: { type: 'number', description: '指定替换第几次出现（0=替换所有，1=替换第1次，2=替换第2次...），默认 0' }
+                    },
+                    required: ['filePath', 'searchText', 'replaceText']
+                }
+            }
+        },
+        async (args) => {
+            const result = await fsApi.replaceInFile(
+                args.filePath,
+                args.searchText,
+                args.replaceText,
+                args.occurrence ?? 0
+            );
+            return result;
+        }
+    );
+
     return registry;
 }

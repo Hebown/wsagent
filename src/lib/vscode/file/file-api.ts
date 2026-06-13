@@ -125,3 +125,47 @@ export async function ensureFile(filePath: string, content: string, overwrite: b
     }
     await writeFile(filePath, content, overwrite);
 }
+
+/**
+ * 替换文件中的指定文本（纯文本替换，非正则）。
+ * @param filePath 文件路径
+ * @param searchText 要搜索的文本
+ * @param replaceText 替换后的文本
+ * @param occurrence 指定替换第几次出现（0=替换所有，1=替换第1次，2=替换第2次...）
+ * @returns 操作结果描述
+ */
+export async function replaceInFile(filePath: string, searchText: string, replaceText: string, occurrence: number = 0): Promise<string> {
+    const content = await readFile(filePath);
+    let newContent: string;
+    let replaceCount: number = 0;
+
+    if (occurrence > 0) {
+        // 替换第 N 次出现
+        let startPos = 0;
+        let foundPos = -1;
+        for (let i = 0; i < occurrence; i++) {
+            foundPos = content.indexOf(searchText, startPos);
+            if (foundPos === -1) break;
+            startPos = foundPos + searchText.length;
+        }
+        if (foundPos !== -1) {
+            newContent = content.slice(0, foundPos) + replaceText + content.slice(foundPos + searchText.length);
+            replaceCount = 1;
+        } else {
+            newContent = content;
+        }
+    } else {
+        // 替换所有出现（转义正则特殊字符）
+        const escaped = searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escaped, 'g');
+        newContent = content.replace(regex, replaceText);
+        replaceCount = (content.match(regex) || []).length;
+    }
+
+    if (newContent !== content) {
+        await writeFile(filePath, newContent, true);
+        return `文件 "${filePath}" 中的文本替换完成，共替换了 ${replaceCount} 处。`;
+    } else {
+        return `文件 "${filePath}" 中未找到目标文本 "${searchText}"，未做任何修改。`;
+    }
+}
