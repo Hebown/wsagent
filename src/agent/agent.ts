@@ -370,12 +370,78 @@ export class Agent {
 1. 使用 'update_plan' 工具分解任务。
 2. 逐步执行工具，并在每一步完成后更新计划状态。
 3. 如果遇到报错，修改计划增加修复步骤。
-在执行 Shell 命令时，你应当首先检查终端类型，以使用符合终端类型的 Shell 命令；
-在执行多条 Shell 命令时，请遵循以下严格准则：
-1. **禁止使用反斜杠 (\\) 换行**。请将多条命令写在同一行，并使用 '&&' 或 ';' 分隔。
-2. **禁止执行无限循环任务**。例如 'ping' 必须带上 '-c 4' 参数。
-3. **后台任务**：如果需要启动监听（如 sniff），请使用封装的 'send_to_terminal'，不要在 'run_shell_command' 中阻塞。
-示例：'cd Labsetup && docker exec hostA ping -c 2 1.2.3.4 && sleep 2'
+
+【重要】平台检测与 Shell 命令适配规则：
+在执行任何 Shell 命令之前，你必须先检测当前运行的操作系统平台和终端类型。请按以下步骤检测：
+
+第一步：检测操作系统平台
+- 运行 'ver' 或 'echo %OS%' —— 如果输出包含 "Windows"，则为 Windows 系统
+- 运行 'uname -s' —— 如果输出为 "Linux"，则为 Linux 系统；如果输出为 "Darwin"，则为 macOS 系统
+
+第二步：如果检测到是 Windows 系统，还需要进一步检测终端类型
+- 运行 'echo %PSModulePath%' —— 如果输出包含 "PowerShell" 或 "powershell"，说明当前运行在 PowerShell 环境中
+- 运行 'echo %ComSpec%' —— 如果输出以 "cmd.exe" 结尾，说明当前运行在 cmd.exe 环境中
+- 运行 'powershell -Command "$PSVersionTable.PSVersion.Major"' —— 获取 PowerShell 主版本号
+
+第三步：根据检测结果，使用对应的命令语法规则
+
+【Windows 平台命令语法对照表】
+
+| 操作 | cmd.exe | PowerShell 5.x (<=5.1) | PowerShell 7.x (>=7) |
+|------|---------|----------------------|---------------------|
+| 列出目录 | dir | dir (或 Get-ChildItem) | dir (或 Get-ChildItem) |
+| 查看文件内容 | type | type (或 Get-Content) | type (或 Get-Content) |
+| 查看当前路径 | cd (或 echo %CD%) | Get-Location (或 pwd) | Get-Location (或 pwd) |
+| 清屏 | cls | cls (或 Clear-Host) | cls (或 Clear-Host) |
+| 删除文件 | del | del (或 Remove-Item) | del (或 Remove-Item) |
+| 复制文件 | copy | copy (或 Copy-Item) | copy (或 Copy-Item) |
+| 移动/重命名 | move | move (或 Move-Item) | move (或 Move-Item) |
+| 创建目录 | mkdir | mkdir (或 New-Item) | mkdir (或 New-Item) |
+| 环境变量引用 | %VAR_NAME% | $env:VAR_NAME | $env:VAR_NAME |
+| 路径分隔符 | \\ | \\ | \\ |
+| 多条命令连接 | **&** 或 **&&** | **;** 或 **&&** (PS7支持) | **;** 或 **&&** |
+| 命令换行 | ^ 换行符 | \` 反引号换行 | \` 反引号换行 |
+
+【关键注意事项】
+
+1. **PowerShell 5.x (<=5.1) 不支持 '&&' 操作符！** 如果你检测到 PowerShell 版本为 5.x，必须使用 ';' 来连接多条命令，或者使用 'if ($?) { ... }' 结构。
+   - 正确示例（PS5）：'cd Labsetup; docker exec hostA ping -n 2 1.2.3.4'
+   - 错误示例（PS5）：'cd Labsetup && docker exec hostA ping -n 2 1.2.3.4' ❌
+
+2. **PowerShell 7.x (>=7) 支持 '&&' 操作符**，与 Linux bash 类似。
+   - 正确示例（PS7）：'cd Labsetup && docker exec hostA ping -n 2 1.2.3.4'
+
+3. **cmd.exe 支持 '&' 和 '&&'**，但 '&' 是无条件执行下一条，'&&' 是成功后才执行下一条。
+
+4. **禁止使用反斜杠 (\\) 换行**。请将多条命令写在同一行。
+
+5. **禁止执行无限循环任务**。
+   - Windows 上 'ping -t' 是无限循环，必须用 'ping -n 4'
+   - Linux 上 'ping' 必须带上 '-c 4' 参数
+
+6. **后台任务**：如果需要启动监听（如 sniff），请使用封装的 'send_to_terminal' 工具，不要在 'run_shell_command' 中阻塞。
+
+【Linux / macOS 平台命令语法】
+| 操作 | bash / zsh |
+|------|-----------|
+| 列出目录 | ls |
+| 查看文件内容 | cat |
+| 查看当前路径 | pwd |
+| 清屏 | clear |
+| 删除文件 | rm |
+| 复制文件 | cp |
+| 移动/重命名 | mv |
+| 创建目录 | mkdir -p |
+| 环境变量引用 | $VAR_NAME |
+| 路径分隔符 | / |
+| 多条命令连接 | ; 或 && |
+| 命令换行 | \\ 反斜杠换行 |
+
+示例（Windows cmd）：'cd Labsetup && docker exec hostA ping -n 2 1.2.3.4'
+示例（Windows PS5）：'cd Labsetup; docker exec hostA ping -n 2 1.2.3.4'
+示例（Windows PS7）：'cd Labsetup && docker exec hostA ping -n 2 1.2.3.4'
+示例（Linux）：'cd Labsetup && docker exec hostA ping -c 2 1.2.3.4 && sleep 2'
+
 务必将执行命令得到的中间结果都保存在特定的文件中，并在最终迁移到用户的主机上，以证明实验数据可靠完整。
 `;
     }
