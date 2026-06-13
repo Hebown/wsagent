@@ -169,3 +169,60 @@ export async function replaceInFile(filePath: string, searchText: string, replac
         return `文件 "${filePath}" 中未找到目标文本 "${searchText}"，未做任何修改。`;
     }
 }
+
+/**
+ * 向文件末尾追加内容（如果文件不存在则创建）。
+ * 这是解决模型输出截断问题的核心工具——可以分多次追加内容到同一个文件。
+ * @param filePath 文件路径
+ * @param content 要追加的内容
+ * @param ensureNewline 是否在追加前确保文件末尾有换行（默认 true）
+ * @returns 操作结果描述
+ */
+export async function appendToFile(filePath: string, content: string, ensureNewline: boolean = true): Promise<string> {
+    const fileExists = await exists(filePath);
+    let finalContent: string;
+
+    if (!fileExists) {
+        // 文件不存在，先创建父目录，再写入内容
+        const dir = path.dirname(filePath);
+        if (dir !== '.' && dir !== '/') {
+            const dirExists = await exists(dir);
+            if (!dirExists) {
+                await createFolder(dir, true);
+            }
+        }
+        await writeFile(filePath, content, true);
+        return `文件 "${filePath}" 已创建并写入内容（${content.length} 字符）。`;
+    } else {
+        // 文件已存在，读取原内容并追加
+        const existingContent = await readFile(filePath);
+        if (ensureNewline && !existingContent.endsWith('\n')) {
+            finalContent = existingContent + '\n' + content;
+        } else {
+            finalContent = existingContent + content;
+        }
+        await writeFile(filePath, finalContent, true);
+        return `文件 "${filePath}" 已追加 ${content.length} 字符（总长度 ${finalContent.length} 字符）。`;
+    }
+}
+
+/**
+ * 获取文件大小信息（字节数和字符数）。
+ * 用于检查文件是否完整写入，辅助分块续写策略。
+ * @param filePath 文件路径
+ * @returns 文件信息描述
+ */
+export async function getFileInfo(filePath: string): Promise<string> {
+    const uri = resolveUri(filePath);
+    try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        const content = await readFile(filePath);
+        return `文件 "${filePath}" 信息：
+  - 大小: ${stat.size} 字节
+  - 字符数: ${content.length}
+  - 行数: ${content.split('\n').length}
+  - 最后修改: ${new Date(stat.mtime).toISOString()}`;
+    } catch (error: any) {
+        return `文件 "${filePath}" 不存在或无法读取。`;
+    }
+}

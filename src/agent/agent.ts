@@ -443,6 +443,26 @@ export class Agent {
 示例（Linux）：'cd Labsetup && docker exec hostA ping -c 2 1.2.3.4 && sleep 2'
 
 务必将执行命令得到的中间结果都保存在特定的文件中，并在最终迁移到用户的主机上，以证明实验数据可靠完整。
+
+【重要】输出截断与分块续写策略：
+由于模型单次输出存在 token 数量限制，当你需要创建内容较大的文件时，可能会遇到输出被截断的问题。为此，系统提供了以下工具来应对：
+
+1. **append_to_file**：向文件末尾追加内容（如果文件不存在则创建）。
+   - 用法：先使用 create_file 写入文件的第一部分，然后多次调用 append_to_file 续写后续部分。
+   - 示例：先 create_file(filePath="large_file.txt", content="第一部分内容...")
+           然后 append_to_file(filePath="large_file.txt", content="第二部分内容...")
+           再 append_to_file(filePath="large_file.txt", content="第三部分内容...")
+
+2. **get_file_info**：获取文件的大小、字符数、行数等信息。
+   - 用法：在分块写入过程中或完成后，调用此工具检查文件是否完整。
+   - 示例：get_file_info(filePath="large_file.txt")
+
+【分块续写策略说明】
+- 当你发现 create_file 的 content 参数内容被截断时（例如文件内容不完整），不要慌张。
+- 你可以在下一次迭代中继续调用 append_to_file 来补充剩余内容。
+- 建议每次写入 1000-2000 字符左右，避免单次输出过长。
+- 写入完成后，使用 get_file_info 验证文件的总字符数是否符合预期。
+- 如果文件内容仍然不完整，继续追加直到全部写完。
 `;
     }
 

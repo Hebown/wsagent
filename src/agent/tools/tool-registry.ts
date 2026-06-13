@@ -242,5 +242,55 @@ export function createDefaultToolRegistry(): ToolRegistry {
         }
     );
 
+    // 10. 追加内容到文件末尾（解决输出截断问题的核心工具）
+    registry.registerTool(
+        {
+            type: 'function',
+            function: {
+                name: 'append_to_file',
+                description: '向文件末尾追加内容（如果文件不存在则创建）。这是解决模型输出被截断问题的核心工具——当一次 create_file 无法写完整个文件时，可以分多次调用 append_to_file 来续写完整内容。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        filePath: { type: 'string', description: '相对于工作区根目录的文件路径，例如 "src/main.py"' },
+                        content: { type: 'string', description: '要追加到文件末尾的内容' },
+                        ensureNewline: { type: 'boolean', description: '是否在追加前确保文件末尾有换行（默认 true）' }
+                    },
+                    required: ['filePath', 'content']
+                }
+            }
+        },
+        async (args) => {
+            const result = await fsApi.appendToFile(
+                args.filePath,
+                args.content,
+                args.ensureNewline ?? true
+            );
+            return result;
+        }
+    );
+
+    // 11. 获取文件信息（检查文件完整性）
+    registry.registerTool(
+        {
+            type: 'function',
+            function: {
+                name: 'get_file_info',
+                description: '获取文件的大小、字符数、行数等信息。用于检查文件是否完整写入，辅助分块续写策略。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        filePath: { type: 'string', description: '相对于工作区根目录的文件路径' }
+                    },
+                    required: ['filePath']
+                }
+            }
+        },
+        async (args) => {
+            const result = await fsApi.getFileInfo(args.filePath);
+            return result;
+        }
+    );
+
     return registry;
 }
