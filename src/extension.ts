@@ -20,7 +20,9 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage("未能成功加载 env 中的apiKey，请检查后重试");
         return;
     }
-    const llmClient = new DeepSeekClient(apiKey);
+
+    const model = process.env.LLM_MODEL as string | undefined;
+    const llmClient = new DeepSeekClient(apiKey, 'https://api.deepseek.com', model);
 
     // 2. 初始化工具库
     const toolRegistry = createDefaultToolRegistry();

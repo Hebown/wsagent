@@ -3,10 +3,11 @@ import { LLMClient, Message, ToolDefinition } from './llm-client';
 
 export class DeepSeekClient implements LLMClient {
     private client: OpenAI;
-    private model: string = 'deepseek-chat';
+    private model: string;
 
-    constructor(apiKey: string, baseURL: string = 'https://api.deepseek.com') {
+    constructor(apiKey: string, baseURL: string = 'https://api.deepseek.com', model?: string) {
         this.client = new OpenAI({ apiKey, baseURL });
+        this.model = model || process.env.LLM_MODEL || 'deepseek-chat';
     }
 
     async chat(
