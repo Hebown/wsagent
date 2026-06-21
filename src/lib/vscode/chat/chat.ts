@@ -142,7 +142,7 @@ export function registerChatParticipant(
 
         const agent = new Agent(llmClient, toolRegistry, {
             ...config,
-            logger: chatLogger
+            logger: chatLogger,
         });
 
         try {

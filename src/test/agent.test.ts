@@ -126,7 +126,7 @@ suite('Agent 核心逻辑', () => {
         const mockLLM = new MockLLMClient([
             { role: 'assistant', content: 'Hello from Agent', tool_calls: undefined }
         ]);
-        const agent = new Agent(mockLLM, toolRegistry, { maxIterations: 3 });
+        const agent = new Agent(mockLLM, toolRegistry,);
         const answer = await agent.ask('你好');
         assert.strictEqual(answer, 'Hello from Agent');
     });
@@ -151,29 +151,9 @@ suite('Agent 核心逻辑', () => {
                 tool_calls: undefined
             }
         ]);
-        const agent = new Agent(mockLLM, toolRegistry, { maxIterations: 5 });
+        const agent = new Agent(mockLLM, toolRegistry,);
         const answer = await agent.ask('创建文件');
         assert.strictEqual(answer, '文件已创建');
-    });
-
-    test('达到最大迭代次数强制停止', async () => {
-        const infiniteToolCall: Message = {
-            role: 'assistant',
-            content: '',
-            tool_calls: [{
-                id: 'loop',
-                type: 'function',
-                function: {
-                    name: 'create_file',
-                    arguments: JSON.stringify({ filePath: 'loop.txt', content: '' })
-                }
-            }]
-        };
-        const manyResponses = Array(10).fill(infiniteToolCall);
-        const mockLLM = new MockLLMClient(manyResponses);
-        const agent = new Agent(mockLLM, toolRegistry, { maxIterations: 2 });
-        const answer = await agent.ask('循环创建文件');
-        assert.ok(answer.includes('最大迭代次数'));
     });
 
     test('AgentLogEvent 枚举定义完整', () => {
@@ -220,7 +200,6 @@ suite('Agent 核心逻辑', () => {
         ]);
 
         const agent = new Agent(mockLLM, toolRegistry, {
-            maxIterations: 5,
             logger: testLogger
         });
         await agent.ask('创建文件');

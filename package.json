@@ -3,7 +3,7 @@
   "publisher": "Tenna",
   "displayName": "wsagent",
   "description": "agent for seed labs",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.118.0"
   },
@@ -40,7 +40,8 @@
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "pack": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -59,5 +60,5 @@
     "dotenv": "^17.4.2",
     "openai": "^6.35.0"
   },
-  "repository":"https://github.com/Hebown/wsagent"
+  "repository": "https://github.com/Hebown/wsagent"
 }

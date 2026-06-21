@@ -5,7 +5,6 @@ import * as fsApi from '../lib/vscode/file/file-api';
 
 export interface AgentConfig {
     systemPrompt?: string;
-    maxIterations?: number;
     temperature?: number;
     logger?: (message: string) => void;
 }
@@ -44,11 +43,11 @@ export class Agent {
         this.toolRegistry = toolRegistry;
         this.config = {
             systemPrompt: config.systemPrompt || this.getDefaultPrompt(),
-            maxIterations: config.maxIterations ?? 100,
             temperature: config.temperature ?? 0.1,
             logger: config.logger ?? console.log,
         };
         this.registerPlanningTool();
+        this.registerFinalAnswerTool();
         this.messages = [{ role: 'system', content: this.config.systemPrompt }];
     }
 
@@ -169,6 +168,11 @@ export class Agent {
                 const shortCmd = cmd.length > 80 ? cmd.slice(0, 80) + '...' : cmd;
                 return `📟 发送到终端: \`${shortCmd}\``;
             }
+            case 'think': {
+                const thought = args.thought || '';
+                const shortThought = thought.length > 60 ? thought.slice(0, 60) + '...' : thought;
+                return `💭 思考: ${shortThought}`;
+            }
             case 'clear_terminal':
                 return '🧹 清空终端';
             case 'update_plan':
@@ -219,6 +223,11 @@ export class Agent {
                 return `已删除 \`${args.targetPath}\``;
             case 'send_to_terminal':
                 return `命令已发送到终端: \`${(args.command || '').slice(0, 60)}\``;
+            case 'think': {
+                const thought = args.thought || '';
+                const preview = thought.length > 200 ? thought.slice(0, 200) + '...' : thought;
+                return `💭 ${preview}`;
+            }
             case 'clear_terminal':
                 return '终端已清空';
             case 'update_plan':
@@ -273,6 +282,34 @@ export class Agent {
 请根据当前状态继续执行，不要重复已完成的操作。`;
         this.messages.push({ role: 'system', content: contextPrompt });
         this.log(`已注入计划恢复上下文（已完成${completedSteps.length}步）`);
+    }
+
+    private registerFinalAnswerTool() {
+        this.toolRegistry.registerTool(
+            {
+                type: 'function',
+                function: {
+                    name: 'final_answer',
+                    description: '【退出工具】当你认为任务已经全部完成，需要向用户输出最终答案时，调用此工具。调用此工具后，主循环会终止并将你的回答返回给用户。注意：如果你只是想在工具调用之间穿插描述性文字或汇报进展，请直接输出文本（不要调用此工具），系统会保留你的文本并让你继续执行。',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            answer: {
+                                type: 'string',
+                                description: '最终的回答内容，包含任务完成的总结、关键结果等'
+                            }
+                        },
+                        required: ['answer']
+                    }
+                }
+            },
+            async (args) => {
+                const answer = args.answer || '任务完成。';
+                this.logEvent(AgentLogEvent.SUMMARIZING, '运行完成，正在总结结果...');
+                this.logEvent(AgentLogEvent.FINAL_ANSWER, answer);
+                return `[FINAL_ANSWER] ${answer}`;
+            }
+        );
     }
 
     private registerPlanningTool() {
@@ -371,6 +408,35 @@ export class Agent {
 2. 逐步执行工具，并在每一步完成后更新计划状态。
 3. 如果遇到报错，修改计划增加修复步骤。
 
+【核心规则 — 工具调用框架】
+你运行在一个统一的工具调用框架中。请遵循以下规则：
+
+1. **只有 final_answer 才能退出**：当你认为任务**全部完成**时，调用 **final_answer** 工具并传入最终答案来退出循环。不要在任务未完成时调用 final_answer。
+
+2. **纯文本 ≠ 退出**：你可以在任意时刻输出纯文本（描述性文字、分析、汇报进展、解释下一步计划等），这些文字会展示给用户，然后**你会继续执行**，不会退出循环。
+
+3. **调用普通工具 ≠ 退出**：调用任何工具（update_plan、read_file、create_file、think 等）后，你会收到工具执行结果，然后**继续执行**。
+
+4. **使用 think 工具输出结构化思考**：除了直接输出纯文本外，你还可以调用 **think** 工具来输出解释性文字。think 工具接受一个 'thought' 参数，适合用于：
+   - 分析刚才执行工具的结果
+   - 解释你的思考过程和决策依据
+   - 汇报当前进展和下一步计划
+   - 在多个工具调用之间穿插分析
+   think 工具不执行任何实际操作，只是将你的思考内容展示给用户并保留在对话历史中。
+
+5. **自由组合文本和工具调用**：在一次迭代中，你可以：
+   - 只输出文本（不调用工具）
+   - 只调用工具（不输出文本）
+   - **同时输出文本和调用工具**（文本在前，工具在后）
+   - 系统不会因为你输出文本或调用普通工具就终止你的执行。
+
+6. **示例流程**：
+   - 迭代1: 输出 "好的，我来分析一下这个问题..." → 调用 update_plan 创建计划
+   - 迭代2: 输出 "首先，让我读取代码文件..." → 调用 read_file 读取代码
+   - 迭代3: 调用 think(thought="我看到代码中存在以下问题：...") → 调用 create_file 修改代码
+   - 迭代4: 输出 "现在来验证修改是否正确..." → 调用 run_shell_command 验证
+   - 迭代5: 调用 think(thought="验证通过！所有测试都通过了。") → 调用 final_answer(answer="任务完成，已成功修改...") 退出
+
 【重要】平台检测与 Shell 命令适配规则：
 在执行任何 Shell 命令之前，你必须先检测当前运行的操作系统平台和终端类型。请按以下步骤检测：
 
@@ -468,57 +534,136 @@ export class Agent {
 
     async run(): Promise<string> {
         let iteration = 0;
-        while (iteration < this.config.maxIterations) {
+        while (true) {
             iteration++;
             this.logEvent(AgentLogEvent.ITERATION_START, `--- 迭代 #${iteration} 开始 ---`);
 
             const response = await this.llm.chat(this.messages, this.toolRegistry.getToolDefinitions(), 'auto');
             this.messages.push(response);
 
-            if (response.tool_calls && response.tool_calls.length > 0) {
-                this.log(`LLM 请求调用 ${response.tool_calls.length} 个工具:`);
-                for (const call of response.tool_calls) {
-                    this.log(`  - 工具: ${call.function.name}`);
+            // ===== 统一处理 LLM 响应：文本和工具调用都是"一次迭代的输出" =====
+            // LLM 的响应可能包含：
+            //   1. 纯文本（描述性文字、分析、汇报进展等）
+            //   2. 工具调用（普通工具 或 final_answer）
+            //   3. 纯文本 + 工具调用（同时输出）
+            //   4. 空响应（异常情况）
+            //
+            // 核心规则：只有 final_answer 工具调用才是退出信号。
+            // 纯文本和普通工具调用都会让循环继续。
+
+            const toolCalls = response.tool_calls || [];
+            const textContent = (response.content || '').trim();
+
+            // 情况 1：空响应（既无文本也无工具调用）→ 异常退出
+            if (toolCalls.length === 0 && !textContent) {
+                this.log('警告: LLM 返回了空响应，终止执行');
+                return 'LLM 返回了空响应，任务终止。';
+            }
+
+            // 情况 2：有文本输出 → 记录日志（文本已通过 push(response) 加入对话历史）
+            if (textContent) {
+                this.logEvent(AgentLogEvent.INFO, `🤖 AI 输出描述性文本 (${textContent.length} 字符)`);
+            }
+
+            // 情况 2.5：只有纯文本，没有工具调用 → 追加引导消息，让 LLM 继续决策
+            if (textContent && toolCalls.length === 0) {
+                // 追加一条 system 引导消息，提示 LLM 必须做出下一步决策
+                const guidanceMsg: Message = {
+                    role: 'system',
+                    content: '你的描述性文字已展示给用户。现在请继续执行任务：如果需要调用工具来完成工作，请调用相应的工具；如果任务已经全部完成，请调用 final_answer 工具输出最终答案。不要输出空内容。'
+                };
+                this.messages.push(guidanceMsg);
+                this.log('已追加引导消息，提示 LLM 继续决策');
+                continue;
+            }
+
+            // 情况 3：有工具调用 → 执行工具
+            if (toolCalls.length > 0) {
+                // 检查是否包含 final_answer（退出信号）
+                const finalAnswerCall = toolCalls.find(
+                    call => call['function'].name === 'final_answer'
+                );
+
+                if (finalAnswerCall) {
+                    // 先执行 final_answer 之外的其他工具（如果有）
+                    const otherCalls = toolCalls.filter(
+                        call => call['function'].name !== 'final_answer'
+                    );
+
+                    for (const call of otherCalls) {
+                        const args = JSON.parse(call['function'].arguments);
+                        const toolCallLog = this.formatToolCall(call['function'].name, args);
+                        this.logEvent(AgentLogEvent.TOOL_CALLING, toolCallLog);
+                        await this.saveToolArgsToFile(call['function'].name, args, toolCallLog);
+
+                        const startTime = Date.now();
+                        const result = await this.toolRegistry.execute(call['function'].name, args);
+                        const duration = Date.now() - startTime;
+
+                        await this.saveToolResultToFile(call['function'].name, args, result, toolCallLog);
+                        const friendlyResult = this.formatToolResult(call['function'].name, args, result);
+                        this.logEvent(AgentLogEvent.TOOL_RESULT, friendlyResult);
+
+                        this.messages.push({
+                            role: 'tool',
+                            content: result,
+                            tool_call_id: call.id,
+                        });
+                    }
+
+                    // 执行 final_answer 工具，获取最终答案并退出
+                    const faArgs = JSON.parse(finalAnswerCall['function'].arguments);
+                    const finalAnswer = faArgs.answer || '任务完成。';
+                    this.logEvent(AgentLogEvent.TOOL_CALLING, `📋 输出最终答案`);
+                    await this.saveToolArgsToFile('final_answer', faArgs, '输出最终答案');
+
+                    const result = await this.toolRegistry.execute('final_answer', faArgs);
+                    await this.saveToolResultToFile('final_answer', faArgs, result, '输出最终答案');
+
+                    this.messages.push({
+                        role: 'tool',
+                        content: result,
+                        tool_call_id: finalAnswerCall.id,
+                    });
+
+                    return finalAnswer;
                 }
 
-                for (const call of response.tool_calls) {
-                    const args = JSON.parse(call.function.arguments);
+                // ===== 普通工具调用（非 final_answer）=====
+                this.log(`LLM 请求调用 ${toolCalls.length} 个工具:`);
+                for (const call of toolCalls) {
+                    this.log(`  - 工具: ${call['function'].name}`);
+                }
 
-                    // 1. 生成精简版调用日志（同时作为文件名的描述来源）
-                    const toolCallLog = this.formatToolCall(call.function.name, args);
+                for (const call of toolCalls) {
+                    const args = JSON.parse(call['function'].arguments);
+
+                    const toolCallLog = this.formatToolCall(call['function'].name, args);
                     this.logEvent(AgentLogEvent.TOOL_CALLING, toolCallLog);
+                    await this.saveToolArgsToFile(call['function'].name, args, toolCallLog);
 
-                    // 2. 保存完整参数到文件（静默），使用 formatToolCall 的返回值作为描述
-                    await this.saveToolArgsToFile(call.function.name, args, toolCallLog);
-
-                    // 3. 执行工具
                     const startTime = Date.now();
-                    const result = await this.toolRegistry.execute(call.function.name, args);
+                    const result = await this.toolRegistry.execute(call['function'].name, args);
                     const duration = Date.now() - startTime;
 
-                    // 4. 保存完整结果到文件（静默），使用 formatToolCall 的返回值作为描述
-                    await this.saveToolResultToFile(call.function.name, args, result, toolCallLog);
-
-                    // 5. 显示精简版结果摘要给用户
-                    const friendlyResult = this.formatToolResult(call.function.name, args, result);
+                    await this.saveToolResultToFile(call['function'].name, args, result, toolCallLog);
+                    const friendlyResult = this.formatToolResult(call['function'].name, args, result);
                     this.logEvent(AgentLogEvent.TOOL_RESULT, friendlyResult);
 
-                    // 6. 传给 LLM 的仍然是完整结果
                     this.messages.push({
                         role: 'tool',
                         content: result,
                         tool_call_id: call.id,
                     });
                 }
-                continue;
             }
 
-            const finalAnswer = response.content || '完成。';
-            this.logEvent(AgentLogEvent.SUMMARIZING, '运行完成，正在总结结果...');
-            this.logEvent(AgentLogEvent.FINAL_ANSWER, finalAnswer);
-            return finalAnswer;
+            // ===== 本轮迭代结束，继续循环 =====
+            // 无论是纯文本、普通工具调用、还是纯文本+工具调用，
+            // 只要没有 final_answer，就继续下一轮迭代
+            continue;
         }
-        const timeoutMsg = `达到最大迭代次数 (${this.config.maxIterations})，停止执行。`;
+        const timeoutMsg = `出现奇怪的错误，停止执行。`;
         this.log(timeoutMsg);
         return timeoutMsg;
     }

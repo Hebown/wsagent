@@ -292,5 +292,35 @@ export function createDefaultToolRegistry(): ToolRegistry {
         }
     );
 
+    // 12. think — 让 AI 在工具调用之间输出过渡性文字
+    // 这个工具不执行任何实际操作，只是让 AI 能够主动向用户解释：
+    // - 刚才执行了什么工具、结果如何
+    // - 对中间结果的分析和思考
+    // - 下一步计划做什么
+    // - 遇到的困难和解决方案
+    registry.registerTool(
+        {
+            type: 'function',
+            function: {
+                name: 'think',
+                description: '【过渡上下文工具】在工具调用之间输出描述性文字，向用户解释你刚才做了什么、结果如何、下一步计划等。这个工具不执行任何实际操作，只是让你能够在多个工具调用之间穿插分析、思考和解释。当你需要向用户展示你的思考过程、分析中间结果、或解释下一步计划时，请调用此工具。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        thought: {
+                            type: 'string',
+                            description: '你要向用户展示的思考内容。可以包含：对刚才执行结果的总结、对中间数据的分析、遇到的问题及解决方案、下一步的执行计划等。'
+                        }
+                    },
+                    required: ['thought']
+                }
+            }
+        },
+        async (args) => {
+            const thought = args.thought || '';
+            return `[THOUGHT] ${thought}`;
+        }
+    );
+
     return registry;
 }
